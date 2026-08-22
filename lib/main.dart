@@ -669,6 +669,10 @@ class _AdminHomeState extends State<AdminHome> {
         commissionPercent:commissionPercent,
         calculate:calculate,
       ),
+      AdminSettlements(
+        orders:orders,
+        onChanged:load,
+      ),
       AdminStats(
         orders:orders,
         commissionPercent:commissionPercent,
@@ -710,6 +714,10 @@ class _AdminHomeState extends State<AdminHome> {
           NavigationDestination(
             icon:Icon(Icons.account_balance_wallet),
             label:'Finances',
+          ),
+          NavigationDestination(
+            icon:Icon(Icons.account_balance),
+            label:'Règlements',
           ),
           NavigationDestination(
             icon:Icon(Icons.bar_chart),
@@ -1137,6 +1145,189 @@ class AdminStats extends StatelessWidget {
           'Commission estimée à $commissionPercent %',
           '${estimatedCommission.round()} FCFA',
           Icons.percent,
+        ),
+      ],
+    );
+  }
+}
+
+
+class AdminSettlements extends StatefulWidget {
+  final List<Map<String,dynamic>> orders;
+  final Future<void> Function() onChanged;
+  const AdminSettlements({
+    super.key,
+    required this.orders,
+    required this.onChanged,
+  });
+  @override State<AdminSettlements> createState()=>_AdminSettlementsState();
+}
+
+class _AdminSettlementsState extends State<AdminSettlements> {
+  bool busy=false;
+
+  num n(dynamic v)=>v is num?v:(num.tryParse('$v')??0);
+
+  num get totalCommission=>widget.orders.fold<num>(
+    0,(s,o)=>s+n(o['commission_amount']),
+  );
+
+  num get recoveredCommission=>widget.orders
+      .where((o)=>o['settlement_status']=='paid')
+      .fold<num>(0,(s,o)=>s+n(o['commission_amount']));
+
+  num get commissionToRecover=>widget.orders
+      .where((o)=>o['settlement_status']!='paid')
+      .fold<num>(0,(s,o)=>s+n(o['commission_amount']));
+
+  num get restaurantToPay=>widget.orders
+      .where((o)=>o['settlement_status']!='paid')
+      .fold<num>(0,(s,o)=>s+n(o['restaurant_net_amount']));
+
+  Future<void> markPaid(Map<String,dynamic> o) async {
+    setState(()=>busy=true);
+    try {
+      await db.from('orders').update({
+        'settlement_status':'paid',
+      }).eq('id',o['id']);
+
+      await widget.onChanged();
+
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:Text(
+            'Règlement enregistré • Commission ${n(o['commission_amount'])} F.',
+          ),
+        ),
+      );
+    } catch(e) {
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content:Text('Erreur règlement : $e')),
+      );
+    } finally {
+      if(mounted)setState(()=>busy=false);
+    }
+  }
+
+  Widget amountCard(String title,num amount,IconData icon)=>Card(
+    child:Padding(
+      padding:const EdgeInsets.all(16),
+      child:SizedBox(
+        width:230,
+        child:Column(
+          crossAxisAlignment:CrossAxisAlignment.start,
+          children:[
+            Icon(icon,size:32,color:brand),
+            const SizedBox(height:8),
+            Text(
+              '${amount.round()} FCFA',
+              style:const TextStyle(fontSize:23,fontWeight:FontWeight.bold),
+            ),
+            Text(title),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  @override Widget build(BuildContext context) {
+    return ListView(
+      padding:const EdgeInsets.all(16),
+      children:[
+        const Text(
+          'Règlements & commissions',
+          style:TextStyle(fontSize:28,fontWeight:FontWeight.bold),
+        ),
+        const SizedBox(height:6),
+        const Text(
+          'Suivi des commissions BILET FOOD et des montants nets dus aux restaurants.',
+        ),
+        const SizedBox(height:14),
+        Wrap(
+          spacing:10,
+          runSpacing:10,
+          children:[
+            amountCard(
+              'Commission calculée',
+              totalCommission,
+              Icons.percent,
+            ),
+            amountCard(
+              'Commission récupérée',
+              recoveredCommission,
+              Icons.savings,
+            ),
+            amountCard(
+              'Commission à récupérer',
+              commissionToRecover,
+              Icons.pending_actions,
+            ),
+            amountCard(
+              'Net restaurants à régler',
+              restaurantToPay,
+              Icons.restaurant,
+            ),
+          ],
+        ),
+        const SizedBox(height:18),
+        const Text(
+          'Détail des règlements',
+          style:TextStyle(fontSize:21,fontWeight:FontWeight.bold),
+        ),
+        const SizedBox(height:8),
+        for(final o in widget.orders.where(
+          (o)=>n(o['commission_amount'])>0 || n(o['restaurant_net_amount'])>0,
+        ))
+          Card(
+            child:Padding(
+              padding:const EdgeInsets.all(12),
+              child:Column(
+                crossAxisAlignment:CrossAxisAlignment.start,
+                children:[
+                  Text(
+                    '${o['order_number']??o['id']}',
+                    style:const TextStyle(
+                      fontSize:17,
+                      fontWeight:FontWeight.bold,
+                    ),
+                  ),
+                  Text('Montant commande : ${n(o['total'])} F'),
+                  Text('Commission BILET FOOD : ${n(o['commission_amount'])} F'),
+                  Text('Net restaurant : ${n(o['restaurant_net_amount'])} F'),
+                  Text(
+                    'Mode client : ${o['payment_method']??'Non renseigné'}',
+                  ),
+                  Text(
+                    'Statut règlement : ${o['settlement_status']??'pending'}',
+                    style:const TextStyle(fontWeight:FontWeight.bold),
+                  ),
+                  const SizedBox(height:8),
+                  if(o['settlement_status']!='paid')
+                    FilledButton.icon(
+                      onPressed:busy?null:()=>markPaid(o),
+                      icon:const Icon(Icons.check),
+                      label:const Text('MARQUER RÉGLÉ'),
+                    )
+                  else
+                    const Chip(
+                      avatar:Icon(Icons.check_circle),
+                      label:Text('RÈGLEMENT TERMINÉ'),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        const SizedBox(height:14),
+        const Card(
+          child:ListTile(
+            leading:Icon(Icons.info_outline),
+            title:Text('Encaissement automatique'),
+            subtitle:Text(
+              'Cet écran assure le suivi comptable. Le transfert réel de fonds '
+              'par Mobile Money ou paiement en ligne devra être relié au prestataire '
+              'de paiement avant la mise en production.',
+            ),
+          ),
         ),
       ],
     );
