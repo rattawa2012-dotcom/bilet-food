@@ -5,3 +5,8 @@
   adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: "assets/bilet_food_logo.png"
   min_sdk_android: 21
+
+  windows:
+    generate: true
+    image_path: "assets/bilet_food_logo.png"
+    icon_size: 256
