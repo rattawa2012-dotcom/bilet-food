@@ -88,6 +88,115 @@ class _Login extends State<Login>{
     if(choice=='identifier')await forgotIdentifier();
   }
 
+  Future<void> createClientAccount() async {
+    await _registrationDialog('client');
+  }
+
+  Future<void> becomeRestaurant() async {
+    await _registrationDialog('restaurant');
+  }
+
+  Future<void> becomeCourier() async {
+    await _registrationDialog('courier');
+  }
+
+  Future<void> _registrationDialog(String type) async {
+    final name=TextEditingController();
+    final business=TextEditingController();
+    final phone=TextEditingController();
+    final address=TextEditingController();
+    final mail=TextEditingController();
+    final pass=TextEditingController();
+    final confirm=TextEditingController();
+    final isClient=type=='client';
+    final isRestaurant=type=='restaurant';
+    final title=isClient?'Créer un compte Client':isRestaurant?'Devenir Restaurant':'Devenir Livreur';
+    final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(
+      title:Text(title),
+      content:SizedBox(width:460,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
+        TextField(controller:name,decoration:const InputDecoration(labelText:'Nom et prénom',border:OutlineInputBorder())),
+        if(isRestaurant)...[const SizedBox(height:10),TextField(controller:business,decoration:const InputDecoration(labelText:'Nom du restaurant',border:OutlineInputBorder()))],
+        const SizedBox(height:10),
+        TextField(controller:phone,keyboardType:TextInputType.phone,decoration:const InputDecoration(labelText:'Téléphone',border:OutlineInputBorder())),
+        const SizedBox(height:10),
+        TextField(controller:address,decoration:InputDecoration(labelText:isRestaurant?'Adresse du restaurant':'Adresse',border:const OutlineInputBorder())),
+        const SizedBox(height:10),
+        TextField(controller:mail,keyboardType:TextInputType.emailAddress,decoration:const InputDecoration(labelText:'E-mail',border:OutlineInputBorder())),
+        const SizedBox(height:10),
+        TextField(controller:pass,obscureText:true,decoration:const InputDecoration(labelText:'Mot de passe',border:OutlineInputBorder())),
+        const SizedBox(height:10),
+        TextField(controller:confirm,obscureText:true,decoration:const InputDecoration(labelText:'Confirmer le mot de passe',border:OutlineInputBorder())),
+        if(!isClient)...[const SizedBox(height:12),const Text('Le compte sera activé après validation par l’administrateur BILET FOOD.',style:TextStyle(fontWeight:FontWeight.w600))],
+      ]))),
+      actions:[
+        TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('ANNULER')),
+        FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(isClient?'CRÉER LE COMPTE':'ENVOYER LA DEMANDE')),
+      ],
+    ));
+    if(ok==true){
+      if(name.text.trim().isEmpty||phone.text.trim().isEmpty||mail.text.trim().isEmpty||pass.text.length<6||pass.text!=confirm.text||(isRestaurant&&business.text.trim().isEmpty)){
+        if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Vérifiez les informations. Mot de passe : 6 caractères minimum et confirmation identique.')));
+      }else{
+        setState(()=>busy=true);
+        try{
+          final result=await db.auth.signUp(email:mail.text.trim(),password:pass.text,data:{'full_name':name.text.trim()});
+          final uid=result.user?.id;
+          if(uid==null)throw Exception('Compte non créé.');
+          final profileData=<String,dynamic>{
+            'id':uid,'full_name':name.text.trim(),'email':mail.text.trim(),'phone':phone.text.trim(),'address':address.text.trim(),
+            'role':isClient?'client':type,'account_status':isClient?'active':'pending',
+          };
+          if(isRestaurant)profileData['business_name']=business.text.trim();
+          await db.from('profiles').upsert(profileData);
+          if(!isClient){
+            await db.from('registration_requests').insert({
+              'user_id':uid,'request_type':type,'full_name':name.text.trim(),'business_name':isRestaurant?business.text.trim():null,
+              'phone':phone.text.trim(),'address':address.text.trim(),'email':mail.text.trim(),'status':'pending',
+            });
+            await db.auth.signOut();
+          }
+          if(mounted){
+            await showDialog(context:context,builder:(c)=>AlertDialog(
+              title:Text(isClient?'Compte créé':'Demande enregistrée'),
+              content:Text(isClient?'Votre compte Client BILET FOOD a été créé. Vous pouvez maintenant utiliser l’application.':'Votre demande a été transmise. Vous pourrez vous connecter après validation par BILET FOOD.'),
+              actions:[FilledButton(onPressed:()=>Navigator.pop(c),child:const Text('OK'))],
+            ));
+          }
+        }catch(x){
+          if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Inscription impossible : $x')));
+        }finally{if(mounted)setState(()=>busy=false);}
+      }
+    }
+    // Controllers locaux du dialogue : ne pas les disposer immédiatement ici.
+    // La fermeture de la route AlertDialog peut encore effectuer une dernière frame.
+  }
+
+  Future<void> support() async {
+    final name=TextEditingController();
+    final mail=TextEditingController(text:e.text.trim());
+    final phone=TextEditingController();
+    final subject=TextEditingController();
+    final message=TextEditingController();
+    final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(
+      title:const Text('Assistance BILET FOOD'),
+      content:SizedBox(width:470,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
+        TextField(controller:name,decoration:const InputDecoration(labelText:'Nom et prénom',border:OutlineInputBorder())),
+        const SizedBox(height:10),TextField(controller:mail,keyboardType:TextInputType.emailAddress,decoration:const InputDecoration(labelText:'E-mail',border:OutlineInputBorder())),
+        const SizedBox(height:10),TextField(controller:phone,keyboardType:TextInputType.phone,decoration:const InputDecoration(labelText:'Téléphone',border:OutlineInputBorder())),
+        const SizedBox(height:10),TextField(controller:subject,decoration:const InputDecoration(labelText:'Objet',border:OutlineInputBorder())),
+        const SizedBox(height:10),TextField(controller:message,maxLines:5,decoration:const InputDecoration(labelText:'Votre message',border:OutlineInputBorder())),
+      ]))),
+      actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('ANNULER')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('ENVOYER'))],
+    ));
+    if(ok==true&&subject.text.trim().isNotEmpty&&message.text.trim().isNotEmpty){
+      try{
+        await db.from('support_requests').insert({'user_id':db.auth.currentUser?.id,'full_name':name.text.trim(),'email':mail.text.trim(),'phone':phone.text.trim(),'subject':subject.text.trim(),'message':message.text.trim(),'status':'open'});
+        if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Votre demande a été envoyée à l’assistance BILET FOOD.')));
+      }catch(x){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Envoi impossible : $x')));}
+    }
+    // Même principe pour le dialogue Assistance : éviter un dispose pendant l’animation de fermeture.
+  }
+
   @override void dispose(){e.dispose();p.dispose();super.dispose();}
   @override Widget build(BuildContext c)=>Scaffold(body:Center(child:SizedBox(width:430,child:Card(child:Padding(padding:const EdgeInsets.all(24),child:Column(mainAxisSize:MainAxisSize.min,children:[
     const Icon(Icons.delivery_dining,size:72,color:brand),
@@ -100,6 +209,14 @@ class _Login extends State<Login>{
     FilledButton(onPressed:busy?null:go,style:FilledButton.styleFrom(backgroundColor:brand,minimumSize:const Size.fromHeight(50)),child:Text(busy?'Connexion...':'SE CONNECTER')),
     const SizedBox(height:8),
     TextButton.icon(onPressed:busy?null:recoveryMenu,icon:const Icon(Icons.help_outline),label:const Text('COMPTE OUBLIÉ ?')),
+    const Divider(height:24),
+    OutlinedButton.icon(onPressed:busy?null:createClientAccount,icon:const Icon(Icons.person_add),label:const Text('CRÉER UN COMPTE CLIENT')),
+    const SizedBox(height:6),
+    OutlinedButton.icon(onPressed:busy?null:becomeRestaurant,icon:const Icon(Icons.storefront),label:const Text('DEVENIR RESTAURANT')),
+    const SizedBox(height:6),
+    OutlinedButton.icon(onPressed:busy?null:becomeCourier,icon:const Icon(Icons.delivery_dining),label:const Text('DEVENIR LIVREUR')),
+    const SizedBox(height:6),
+    TextButton.icon(onPressed:busy?null:support,icon:const Icon(Icons.support_agent),label:const Text('ASSISTANCE / SUPPORT')),
   ]))))));
 }
 class Router extends StatefulWidget{const Router({super.key});@override State<Router> createState()=>_Router();}
@@ -111,6 +228,9 @@ class _Router extends State<Router>{
     if(load)return const Scaffold(body:Center(child:CircularProgressIndicator()));
     if(err!=null)return Scaffold(body:Center(child:Text('Erreur profil : $err')));
     final r='${profile?['role']??''}'.trim().toLowerCase();
+    final accountStatus='${profile?['account_status']??'active'}'.trim().toLowerCase();
+    if(accountStatus=='pending')return Scaffold(appBar:AppBar(title:const Text('BILET FOOD'),actions:[IconButton(onPressed:()=>db.auth.signOut(),icon:const Icon(Icons.logout))]),body:const Center(child:Padding(padding:EdgeInsets.all(24),child:Text('Votre demande est en attente de validation par BILET FOOD.',textAlign:TextAlign.center,style:TextStyle(fontSize:22,fontWeight:FontWeight.bold)))));
+    if(accountStatus=='rejected')return Scaffold(appBar:AppBar(title:const Text('BILET FOOD'),actions:[IconButton(onPressed:()=>db.auth.signOut(),icon:const Icon(Icons.logout))]),body:const Center(child:Padding(padding:EdgeInsets.all(24),child:Text('Votre demande n’a pas été validée. Contactez l’assistance BILET FOOD.',textAlign:TextAlign.center,style:TextStyle(fontSize:22,fontWeight:FontWeight.bold)))));
     if(r=='client')return ClientHome(profile:profile!);
     if(r=='restaurant')return RestaurantHome(profile:profile!);
     if(r=='courier')return CourierHome(profile:profile!);
@@ -1387,6 +1507,54 @@ class _AdminManagementState extends State<AdminManagement> {
     }catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Erreur compte : $e')));}
   }
 
+  Future<List<Map<String,dynamic>>> loadRegistrationRequests() async {
+    final x=await db.from('registration_requests').select().order('created_at',ascending:false);
+    return List<Map<String,dynamic>>.from(x);
+  }
+
+  Future<List<Map<String,dynamic>>> loadSupportRequests() async {
+    final x=await db.from('support_requests').select().order('created_at',ascending:false);
+    return List<Map<String,dynamic>>.from(x);
+  }
+
+  Future<void> approveRequest(Map<String,dynamic> request) async {
+    try{
+      dynamic restaurantId=request['restaurant_id'];
+      if(request['request_type']=='restaurant'){
+        final created=await db.from('restaurants').insert({
+          'name':'${request['business_name']??request['full_name']}',
+          'address':'${request['address']??''}',
+          'phone':'${request['phone']??''}',
+          'is_open':false,
+        }).select('id').single();
+        restaurantId=created['id'];
+        await db.from('profiles').update({'role':'restaurant','restaurant_id':restaurantId,'account_status':'active'}).eq('id',request['user_id']);
+      }else{
+        await db.from('profiles').update({'role':'courier','restaurant_id':null,'account_status':'active'}).eq('id',request['user_id']);
+      }
+      await db.from('registration_requests').update({'status':'approved','restaurant_id':restaurantId,'reviewed_at':DateTime.now().toIso8601String()}).eq('id',request['id']);
+      await widget.onChanged();
+      if(mounted)setState((){});
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Demande approuvée.')));
+    }catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Erreur validation : $e')));}
+  }
+
+  Future<void> rejectRequest(Map<String,dynamic> request) async {
+    try{
+      await db.from('registration_requests').update({'status':'rejected','reviewed_at':DateTime.now().toIso8601String()}).eq('id',request['id']);
+      await db.from('profiles').update({'account_status':'rejected'}).eq('id',request['user_id']);
+      if(mounted)setState((){});
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Demande refusée.')));
+    }catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Erreur refus : $e')));}
+  }
+
+  Future<void> closeSupport(Map<String,dynamic> ticket) async {
+    try{
+      await db.from('support_requests').update({'status':'closed','updated_at':DateTime.now().toIso8601String()}).eq('id',ticket['id']);
+      if(mounted)setState((){});
+    }catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Erreur support : $e')));}
+  }
+
   String roleLabel(String r)=>{'client':'Client','restaurant':'Restaurant','courier':'Livreur','admin':'Administrateur'}[r]??r;
   String restaurantName(dynamic id){
     for(final r in widget.restaurants){if(r['id'].toString()==id?.toString())return '${r['name']}';}
@@ -1401,6 +1569,46 @@ class _AdminManagementState extends State<AdminManagement> {
         FilledButton.icon(onPressed:()=>restaurantDialog(),icon:const Icon(Icons.add_business),label:const Text('AJOUTER RESTAURANT')),
       ]),
       const SizedBox(height:12),
+      const Text('Demandes d’inscription',style:TextStyle(fontSize:21,fontWeight:FontWeight.bold)),
+      FutureBuilder<List<Map<String,dynamic>>>(
+        future:loadRegistrationRequests(),
+        builder:(context,snapshot){
+          if(snapshot.connectionState==ConnectionState.waiting)return const Padding(padding:EdgeInsets.all(12),child:LinearProgressIndicator());
+          if(snapshot.hasError)return Text('Erreur demandes : ${snapshot.error}');
+          final requests=snapshot.data??[];
+          final pending=requests.where((r)=>r['status']=='pending').toList();
+          if(pending.isEmpty)return const Card(child:Padding(padding:EdgeInsets.all(14),child:Text('Aucune demande en attente.')));
+          return Column(children:[for(final r in pending)Card(child:ListTile(
+            leading:Icon(r['request_type']=='restaurant'?Icons.storefront:Icons.delivery_dining),
+            title:Text('${r['business_name']??r['full_name']}'),
+            subtitle:Text('${r['request_type']=='restaurant'?'Restaurant':'Livreur'} • ${r['full_name']}\n${r['phone']} • ${r['email']}'),
+            isThreeLine:true,
+            trailing:Wrap(spacing:6,children:[
+              OutlinedButton(onPressed:()=>rejectRequest(r),child:const Text('REFUSER')),
+              FilledButton(onPressed:()=>approveRequest(r),child:const Text('VALIDER')),
+            ]),
+          ))]);
+        },
+      ),
+      const SizedBox(height:18),
+      const Text('Assistance / Support',style:TextStyle(fontSize:21,fontWeight:FontWeight.bold)),
+      FutureBuilder<List<Map<String,dynamic>>>(
+        future:loadSupportRequests(),
+        builder:(context,snapshot){
+          if(snapshot.connectionState==ConnectionState.waiting)return const Padding(padding:EdgeInsets.all(12),child:LinearProgressIndicator());
+          if(snapshot.hasError)return Text('Erreur support : ${snapshot.error}');
+          final tickets=(snapshot.data??[]).where((t)=>t['status']!='closed').toList();
+          if(tickets.isEmpty)return const Card(child:Padding(padding:EdgeInsets.all(14),child:Text('Aucune demande d’assistance ouverte.')));
+          return Column(children:[for(final t in tickets)Card(child:ListTile(
+            leading:const Icon(Icons.support_agent),
+            title:Text('${t['subject']}'),
+            subtitle:Text('${t['full_name']??''} • ${t['phone']??''}\n${t['message']??''}'),
+            isThreeLine:true,
+            trailing:FilledButton(onPressed:()=>closeSupport(t),child:const Text('CLÔTURER')),
+          ))]);
+        },
+      ),
+      const SizedBox(height:18),
       const Text('Restaurants',style:TextStyle(fontSize:21,fontWeight:FontWeight.bold)),
       for(final r in widget.restaurants)Card(child:ListTile(
         leading:Icon(r['is_open']==true?Icons.storefront:Icons.storefront_outlined),
